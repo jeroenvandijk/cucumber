@@ -16,6 +16,8 @@ module Cucumber
           "Transforms must always have a proc with at least one argument"
         end
       end
+      
+      attr_accessor :regexp
 
       def initialize(rb_language, pattern, proc)
         raise MissingProc if proc.nil? || proc.arity < 1

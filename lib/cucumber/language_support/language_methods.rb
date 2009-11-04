@@ -31,10 +31,33 @@ module Cucumber
       end
 
       def execute_transforms(args)
-        args.map do |arg|
-          matching_transform = transforms.detect {|transform| transform.match(arg) }
-          matching_transform ? matching_transform.invoke(arg) : arg
+        transformed_args = args.map do |arg|
+            matching_transform = transforms.detect {|transform| transform.match(arg) }
+            matching_transform ? matching_transform.invoke(arg) : arg
         end
+        execute_tupil_transforms(transformed_args)
+      end
+      
+      # Will try to find the combination of a normal string and a table
+      # When found it will try to find a transform of the form /^some string table:.*$/ that can be applied
+      def execute_tupil_transforms(args) #:nodoc:
+        if args.size >= 2 && 
+            (matched_string = args[-2]).kind_of?(String) && 
+            (matched_table  = args[-1]).kind_of?(Ast::Table)
+          matching_transform = transforms.detect {|transform| transform.match("#{matched_string} table:#{matched_table.headers.join(',')}") }
+          
+          # In order to apply the transform we need to temporarily change the regex i.e. strip al non related table stuff
+          orig_regexp = matching_transform.regexp
+          matching_transform.regexp = /^#{orig_regexp.inspect.slice(/table:.*/).chop}/
+
+          transformations = matching_transform.invoke(matched_table)
+          # raise "A tupil transform should return an array of length 2, got size #{transformations.size}" if transformations.size != 2
+          args[-2..-1] = transformations
+
+          # reset regexp
+          matching_transform.regexp = orig_regexp
+        end
+        args
       end
 
       def add_hook(phase, hook)
