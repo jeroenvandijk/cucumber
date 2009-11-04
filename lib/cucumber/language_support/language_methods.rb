@@ -37,28 +37,6 @@ module Cucumber
         end
         execute_tupil_transforms(transformed_args)
       end
-      
-      # Will try to find the combination of a normal string and a table
-      # When found it will try to find a transform of the form /^some string table:.*$/ that can be applied
-      def execute_tupil_transforms(args) #:nodoc:
-        if args.size >= 2 && 
-            (matched_string = args[-2]).kind_of?(String) && 
-            (matched_table  = args[-1]).kind_of?(Ast::Table)
-          matching_transform = transforms.detect {|transform| transform.match("#{matched_string} table:#{matched_table.headers.join(',')}") }
-          
-          # In order to apply the transform we need to temporarily change the regex i.e. strip al non related table stuff
-          orig_regexp = matching_transform.regexp
-          matching_transform.regexp = /^#{orig_regexp.inspect.slice(/table:.*/).chop}/
-
-          transformations = matching_transform.invoke(matched_table)
-          # raise "A tupil transform should return an array of length 2, got size #{transformations.size}" if transformations.size != 2
-          args[-2..-1] = transformations
-
-          # reset regexp
-          matching_transform.regexp = orig_regexp
-        end
-        args
-      end
 
       def add_hook(phase, hook)
         hooks[phase.to_sym] << hook
@@ -87,6 +65,32 @@ module Cucumber
       end
 
       private
+
+      # Will try to find the combination of a normal string and a table
+      # When found it will try to find a transform of the form /^some string table:.*$/ that can be applied
+      def execute_tupil_transforms(args) #:nodoc:
+        if args.size >= 2 && 
+            (matched_string = args[-2]).kind_of?(String) && 
+            (matched_table  = args[-1]).kind_of?(Ast::Table)
+          matching_transform = transforms.detect {|transform| transform.match("#{matched_string} table:#{matched_table.headers.join(',')}") }
+
+          # Hax, In order to apply the transform we need to temporarily change the regex i.e. strip al non related table stuff
+          orig_regexp = nil
+          matching_transform.instance_eval { orig_regexp = @regexp }
+          if temp_regexp = extract_table_regexp_part(orig_regexp)
+            matching_transform.instance_eval { @regexp = temp_regexp }
+            args[-2..-1] = matching_transform.invoke(matched_table)
+            # reset regexp
+            matching_transform.instance_eval { @regexp = orig_regexp }
+          end 
+        end
+        args
+      end
+      
+      def extract_table_regexp_part(regexp)
+        table_part = regexp.inspect.slice(/table:.*/)
+        table_part && /^#{table_part.chop}/
+      end
 
       def available_step_definition_hash
         @available_step_definition_hash ||= {}
